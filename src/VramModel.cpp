@@ -1,0 +1,103 @@
+#include "VramModel.h"
+
+#include <algorithm>
+
+namespace {
+
+QString formatBytes(quint64 b) {
+    constexpr double KB = 1024.0;
+    constexpr double MB = 1024.0 * 1024.0;
+    constexpr double GB = 1024.0 * 1024.0 * 1024.0;
+    const double v = static_cast<double>(b);
+    if (v >= GB) return QStringLiteral("%1 GiB").arg(v / GB, 0, 'f', 2);
+    if (v >= MB) return QStringLiteral("%1 MiB").arg(v / MB, 0, 'f', 1);
+    if (v >= KB) return QStringLiteral("%1 KiB").arg(v / KB, 0, 'f', 0);
+    return QStringLiteral("%1 B").arg(b);
+}
+
+} // namespace
+
+VramModel::VramModel(bool showNvidia, QObject* parent)
+    : QAbstractTableModel(parent), showNvidia_(showNvidia) {}
+
+int VramModel::rowCount(const QModelIndex& parent) const {
+    return parent.isValid() ? 0 : static_cast<int>(rows_.size());
+}
+
+int VramModel::columnCount(const QModelIndex& parent) const {
+    if (parent.isValid()) return 0;
+    return showNvidia_ ? ColumnCountMax : (ColumnCountMax - 1);
+}
+
+QVariant VramModel::headerData(int section, Qt::Orientation orientation, int role) const {
+    if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
+        return {};
+    }
+    switch (section) {
+        case ColPid:       return QStringLiteral("PID");
+        case ColName:      return QStringLiteral("Prozess");
+        case ColDedicated: return QStringLiteral("Dediziert (VRAM)");
+        case ColShared:    return QStringLiteral("Geteilt (System-RAM)");
+        case ColTotal:     return QStringLiteral("Gesamt (Commit)");
+        case ColNvidia:    return QStringLiteral("NVIDIA (resident)");
+        default:           return {};
+    }
+}
+
+QVariant VramModel::data(const QModelIndex& index, int role) const {
+    if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size()) {
+        return {};
+    }
+    const auto& e = rows_[index.row()];
+
+    switch (role) {
+        case Qt::DisplayRole:
+            switch (index.column()) {
+                case ColPid:       return e.pid;
+                case ColName:      return e.name;
+                case ColDedicated: return formatBytes(e.dedicated);
+                case ColShared:    return formatBytes(e.shared);
+                case ColTotal:     return formatBytes(e.total);
+                case ColNvidia:
+                    return e.nvidiaResident == VramEntry::NoNvidiaData
+                        ? QStringLiteral("—")
+                        : formatBytes(e.nvidiaResident);
+                default:           return {};
+            }
+        case Qt::TextAlignmentRole:
+            if (index.column() == ColName) {
+                return int(Qt::AlignLeft | Qt::AlignVCenter);
+            }
+            return int(Qt::AlignRight | Qt::AlignVCenter);
+        case SortRole:
+            switch (index.column()) {
+                case ColPid:       return e.pid;
+                case ColName:      return e.name;
+                case ColDedicated: return e.dedicated;
+                case ColShared:    return e.shared;
+                case ColTotal:     return e.total;
+                case ColNvidia:
+                    return e.nvidiaResident == VramEntry::NoNvidiaData
+                        ? quint64{0}
+                        : e.nvidiaResident;
+                default:           return {};
+            }
+        default:
+            return {};
+    }
+}
+
+void VramModel::updateData(const QHash<quint32, VramEntry>& entries) {
+    beginResetModel();
+    rows_ = entries.values();
+    std::sort(rows_.begin(), rows_.end(),
+        [this](const VramEntry& a, const VramEntry& b) {
+            if (showNvidia_) {
+                const quint64 an = a.nvidiaResident == VramEntry::NoNvidiaData ? 0 : a.nvidiaResident;
+                const quint64 bn = b.nvidiaResident == VramEntry::NoNvidiaData ? 0 : b.nvidiaResident;
+                if (an != bn) return an > bn;
+            }
+            return a.dedicated > b.dedicated;
+        });
+    endResetModel();
+}
