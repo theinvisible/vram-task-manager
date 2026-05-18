@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(vram-task-manager LANGUAGES CXX)
+project(vram-task-manager VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,8 +11,12 @@ if(NOT WIN32)
     message(FATAL_ERROR "vram-task-manager uses Windows-only PDH counters and only builds on Windows.")
 endif()
 
-# Auto-discover Qt6 under H:/Qt unless an explicit Qt6_DIR is already set.
-if(NOT Qt6_DIR OR NOT EXISTS "${Qt6_DIR}/Qt6Config.cmake")
+# Try the standard find_package first — covers CI (install-qt-action sets
+# Qt6_DIR / CMAKE_PREFIX_PATH / QT_ROOT_DIR) and any explicit user-supplied prefix.
+find_package(Qt6 QUIET COMPONENTS Widgets)
+
+# Local-dev fallback: scan H:/Qt for the newest 6.x MSVC/MinGW kit.
+if(NOT Qt6_FOUND)
     set(_qt_found_dir "")
     file(GLOB _qt_versions LIST_DIRECTORIES true "H:/Qt/6.*")
     list(SORT _qt_versions ORDER DESCENDING)
@@ -33,12 +37,11 @@ if(NOT Qt6_DIR OR NOT EXISTS "${Qt6_DIR}/Qt6Config.cmake")
         list(PREPEND CMAKE_PREFIX_PATH "${_qt_found_dir}")
         set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
         message(STATUS "Auto-detected Qt6 at ${_qt_found_dir}")
+        find_package(Qt6 REQUIRED COMPONENTS Widgets)
     else()
-        message(FATAL_ERROR "Qt6 nicht unter H:/Qt/6.*/msvc*_64 gefunden — bitte Qt6_DIR manuell setzen.")
+        message(FATAL_ERROR "Qt6 nicht gefunden — Qt6_DIR/CMAKE_PREFIX_PATH setzen oder Qt unter H:/Qt installieren.")
     endif()
 endif()
-
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 add_executable(vram-task-manager WIN32
     src/main.cpp
