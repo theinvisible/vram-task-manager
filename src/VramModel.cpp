@@ -15,6 +15,29 @@ QString formatBytes(quint64 b) {
     return QStringLiteral("%1 B").arg(b);
 }
 
+QString formatGpuColumn(const VramEntry& e) {
+    QStringList parts;
+    for (int idx : e.gpuIndicesSorted()) {
+        if (idx >= 0) {
+            parts.append(QString::number(idx));
+        }
+    }
+    if (parts.isEmpty()) {
+        return QStringLiteral("—");
+    }
+    return QStringLiteral("GPU ") + parts.join(QStringLiteral(", "));
+}
+
+int primaryGpuSortKey(const VramEntry& e) {
+    const QList<int> indices = e.gpuIndicesSorted();
+    if (indices.isEmpty()) return INT_MAX;
+    // Put unknown (-1) after real indices so sort is stable & sensible.
+    for (int idx : indices) {
+        if (idx >= 0) return idx;
+    }
+    return INT_MAX - 1;
+}
+
 } // namespace
 
 VramModel::VramModel(bool showNvidia, QObject* parent)
@@ -36,6 +59,7 @@ QVariant VramModel::headerData(int section, Qt::Orientation orientation, int rol
     switch (section) {
         case ColPid:       return QStringLiteral("PID");
         case ColName:      return QStringLiteral("Prozess");
+        case ColGpu:       return QStringLiteral("GPU");
         case ColDedicated: return QStringLiteral("Dediziert (VRAM)");
         case ColShared:    return QStringLiteral("Geteilt (System-RAM)");
         case ColTotal:     return QStringLiteral("Gesamt (Commit)");
@@ -55,9 +79,10 @@ QVariant VramModel::data(const QModelIndex& index, int role) const {
             switch (index.column()) {
                 case ColPid:       return e.pid;
                 case ColName:      return e.name;
-                case ColDedicated: return formatBytes(e.dedicated);
-                case ColShared:    return formatBytes(e.shared);
-                case ColTotal:     return formatBytes(e.total);
+                case ColGpu:       return formatGpuColumn(e);
+                case ColDedicated: return formatBytes(e.dedicatedTotal());
+                case ColShared:    return formatBytes(e.sharedTotal());
+                case ColTotal:     return formatBytes(e.committedTotal());
                 case ColNvidia:
                     return e.nvidiaResident == VramEntry::NoNvidiaData
                         ? QStringLiteral("—")
@@ -68,14 +93,18 @@ QVariant VramModel::data(const QModelIndex& index, int role) const {
             if (index.column() == ColName) {
                 return int(Qt::AlignLeft | Qt::AlignVCenter);
             }
+            if (index.column() == ColGpu) {
+                return int(Qt::AlignCenter);
+            }
             return int(Qt::AlignRight | Qt::AlignVCenter);
         case SortRole:
             switch (index.column()) {
                 case ColPid:       return e.pid;
                 case ColName:      return e.name;
-                case ColDedicated: return e.dedicated;
-                case ColShared:    return e.shared;
-                case ColTotal:     return e.total;
+                case ColGpu:       return primaryGpuSortKey(e);
+                case ColDedicated: return e.dedicatedTotal();
+                case ColShared:    return e.sharedTotal();
+                case ColTotal:     return e.committedTotal();
                 case ColNvidia:
                     return e.nvidiaResident == VramEntry::NoNvidiaData
                         ? quint64{0}
@@ -97,7 +126,7 @@ void VramModel::updateData(const QHash<quint32, VramEntry>& entries) {
                 const quint64 bn = b.nvidiaResident == VramEntry::NoNvidiaData ? 0 : b.nvidiaResident;
                 if (an != bn) return an > bn;
             }
-            return a.dedicated > b.dedicated;
+            return a.dedicatedTotal() > b.dedicatedTotal();
         });
     endResetModel();
 }

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QMainWindow>
 #include <memory>
 
+#include "GpuInventory.h"
 #include "NvmlSampler.h"
 #include "VramSampler.h"
 
@@ -24,18 +26,23 @@ private slots:
     void refresh();
 
 private:
+    struct GpuCard {
+        int gpuIndex = -1;
+        QLabel* value = nullptr;
+        bool hasNvml = false;
+    };
+
     QTableView* view_ = nullptr;
     QLineEdit* searchEdit_ = nullptr;
     QLabel* footer_ = nullptr;
 
     QLabel* kpiProcCount_ = nullptr;
-    QLabel* kpiDedicated_ = nullptr;
-    QLabel* kpiShared_ = nullptr;
-    QList<QLabel*> kpiDeviceLabels_;
+    QList<GpuCard> gpuCards_;
 
     QTimer* timer_ = nullptr;
     VramModel* model_ = nullptr;
     QSortFilterProxyModel* proxy_ = nullptr;
+    std::unique_ptr<GpuInventory> inventory_;
     std::unique_ptr<VramSampler> sampler_;
     std::unique_ptr<NvmlSampler> nvml_;
 };

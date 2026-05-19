@@ -4,6 +4,8 @@
 
 #include <vector>
 
+#include "GpuInventory.h"
+
 namespace {
 
 using nvmlReturn_t = int;
@@ -26,6 +28,16 @@ struct nvmlMemory_t {
     unsigned long long used;
 };
 
+struct nvmlPciInfo_t {
+    char busIdLegacy[16];
+    unsigned int domain;
+    unsigned int bus;
+    unsigned int device;
+    unsigned int pciDeviceId;
+    unsigned int pciSubSystemId;
+    char busId[32];
+};
+
 using fn_init_t = nvmlReturn_t (*)();
 using fn_shutdown_t = nvmlReturn_t (*)();
 using fn_getDeviceCount_t = nvmlReturn_t (*)(unsigned int*);
@@ -33,6 +45,7 @@ using fn_getDeviceHandle_t = nvmlReturn_t (*)(unsigned int, nvmlDevice_t*);
 using fn_getDeviceName_t = nvmlReturn_t (*)(nvmlDevice_t, char*, unsigned int);
 using fn_getMemoryInfo_t = nvmlReturn_t (*)(nvmlDevice_t, nvmlMemory_t*);
 using fn_getProcesses_t = nvmlReturn_t (*)(nvmlDevice_t, unsigned int*, nvmlProcessInfo_v3_t*);
+using fn_getPciInfo_t = nvmlReturn_t (*)(nvmlDevice_t, nvmlPciInfo_t*);
 
 QString prettifyDeviceName(const QString& raw) {
     QString s = raw.trimmed();
@@ -42,9 +55,34 @@ QString prettifyDeviceName(const QString& raw) {
     return s;
 }
 
+int matchAdapterIndex(const GpuInventory* inv, const QString& nvmlName, quint32 pciDeviceId) {
+    if (!inv) return -1;
+
+    // 1) PCI device-id match (most reliable). NVML packs device|vendor as 0xDDDDVVVV.
+    const quint32 deviceIdOnly = pciDeviceId >> 16;
+    const quint32 vendorIdOnly = pciDeviceId & 0xFFFFu;
+    for (const auto& a : inv->adapters()) {
+        if (a.vendorId == vendorIdOnly && a.deviceId == deviceIdOnly) {
+            return a.index;
+        }
+    }
+
+    // 2) Fallback: substring name match against DXGI description.
+    const QString needle = nvmlName.trimmed();
+    if (!needle.isEmpty()) {
+        for (const auto& a : inv->adapters()) {
+            if (a.name.contains(needle, Qt::CaseInsensitive) ||
+                needle.contains(a.name, Qt::CaseInsensitive)) {
+                return a.index;
+            }
+        }
+    }
+    return -1;
+}
+
 } // namespace
 
-NvmlSampler::NvmlSampler() {
+NvmlSampler::NvmlSampler(const GpuInventory* inventory) {
     HMODULE m = LoadLibraryW(L"nvml.dll");
     if (!m) {
         m = LoadLibraryW(L"C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvml.dll");
@@ -63,6 +101,10 @@ NvmlSampler::NvmlSampler() {
     fp_getMemoryInfo_        = reinterpret_cast<void*>(GetProcAddress(m, "nvmlDeviceGetMemoryInfo"));
     fp_getGraphicsProcesses_ = reinterpret_cast<void*>(GetProcAddress(m, "nvmlDeviceGetGraphicsRunningProcesses_v3"));
     fp_getComputeProcesses_  = reinterpret_cast<void*>(GetProcAddress(m, "nvmlDeviceGetComputeRunningProcesses_v3"));
+    fp_getPciInfo_           = reinterpret_cast<void*>(GetProcAddress(m, "nvmlDeviceGetPciInfo_v3"));
+    if (!fp_getPciInfo_) {
+        fp_getPciInfo_ = reinterpret_cast<void*>(GetProcAddress(m, "nvmlDeviceGetPciInfo_v2"));
+    }
 
     if (!fp_init_ || !fp_shutdown_ || !fp_getDeviceCount_ || !fp_getDeviceHandle_) {
         lastError_ = QStringLiteral("nvml.dll: erforderliche Symbole fehlen");
@@ -76,10 +118,11 @@ NvmlSampler::NvmlSampler() {
         return;
     }
 
-    // Cache device handles + names once.
+    // Cache device handles + names + GpuInventory mapping once.
     const auto getCount  = reinterpret_cast<fn_getDeviceCount_t>(fp_getDeviceCount_);
     const auto getHandle = reinterpret_cast<fn_getDeviceHandle_t>(fp_getDeviceHandle_);
     const auto getName   = reinterpret_cast<fn_getDeviceName_t>(fp_getDeviceName_);
+    const auto getPci    = reinterpret_cast<fn_getPciInfo_t>(fp_getPciInfo_);
     unsigned int devCount = 0;
     if (getCount(&devCount) == NVML_SUCCESS) {
         for (unsigned int i = 0; i < devCount; ++i) {
@@ -88,15 +131,26 @@ NvmlSampler::NvmlSampler() {
 
             Device d;
             d.handle = handle;
+            QString rawName;
             if (getName) {
                 char buf[96] = {};
                 if (getName(handle, buf, sizeof(buf)) == NVML_SUCCESS) {
-                    d.name = prettifyDeviceName(QString::fromLocal8Bit(buf));
+                    rawName = QString::fromLocal8Bit(buf);
+                    d.name = prettifyDeviceName(rawName);
                 }
             }
             if (d.name.isEmpty()) {
                 d.name = QStringLiteral("GPU %1").arg(i);
             }
+
+            quint32 pciDeviceId = 0;
+            if (getPci) {
+                nvmlPciInfo_t pci{};
+                if (getPci(handle, &pci) == NVML_SUCCESS) {
+                    pciDeviceId = pci.pciDeviceId;
+                }
+            }
+            d.gpuIndex = matchAdapterIndex(inventory, rawName, pciDeviceId);
             devices_.append(d);
         }
     }
@@ -132,6 +186,7 @@ QList<NvmlSampler::DeviceSample> NvmlSampler::sampleDevices() {
     for (const auto& d : devices_) {
         DeviceSample s;
         s.name = d.name;
+        s.gpuIndex = d.gpuIndex;
         nvmlMemory_t mem{};
         if (getMem(d.handle, &mem) == NVML_SUCCESS) {
             s.memUsed = mem.used;
@@ -142,8 +197,8 @@ QList<NvmlSampler::DeviceSample> NvmlSampler::sampleDevices() {
     return out;
 }
 
-QHash<quint32, quint64> NvmlSampler::sample() {
-    QHash<quint32, quint64> out;
+QHash<quint32, NvmlSampler::ProcessSample> NvmlSampler::sample() {
+    QHash<quint32, ProcessSample> out;
     diagnostics_.clear();
     if (!ready_) {
         return out;
@@ -191,7 +246,11 @@ QHash<quint32, quint64> NvmlSampler::sample() {
         collectList(getCompute, lastCmpRc);
 
         for (auto it = perDevice.constBegin(); it != perDevice.constEnd(); ++it) {
-            out[it.key()] += it.value();
+            auto& ps = out[it.key()];
+            ps.residentTotal += it.value();
+            if (d.gpuIndex >= 0) {
+                ps.perGpuIndex[d.gpuIndex] += it.value();
+            }
         }
     }
 

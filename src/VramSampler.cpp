@@ -52,21 +52,62 @@ QString VramSampler::processNameForPid(quint32 pid) {
 
 namespace {
 
-quint32 parsePidFromInstance(const QString& instance) {
-    // Instances look like "pid_12345_luid_0x00000000_0x0000C123_phys_0_eng_0_engtype_3D"
-    static const QString prefix = QStringLiteral("pid_");
-    if (!instance.startsWith(prefix)) {
+struct ParsedInstance {
+    quint32 pid = 0;
+    quint32 luidHigh = 0;
+    quint32 luidLow  = 0;
+    bool hasLuid = false;
+};
+
+quint32 parseHexAfter(const QString& s, int& pos) {
+    // Expect "0x" then up to 8 hex digits. Advance pos past them.
+    if (pos + 2 > s.size() || s[pos] != QLatin1Char('0') ||
+        (s[pos + 1] != QLatin1Char('x') && s[pos + 1] != QLatin1Char('X'))) {
         return 0;
     }
-    int start = prefix.size();
-    int end = start;
-    while (end < instance.size() && instance[end].isDigit()) {
-        ++end;
+    pos += 2;
+    int start = pos;
+    while (pos < s.size() && (s[pos].isDigit() ||
+           (s[pos].toLower() >= QLatin1Char('a') && s[pos].toLower() <= QLatin1Char('f')))) {
+        ++pos;
     }
-    if (end == start) {
-        return 0;
+    bool ok = false;
+    quint32 v = s.mid(start, pos - start).toUInt(&ok, 16);
+    return ok ? v : 0;
+}
+
+ParsedInstance parseInstance(const QString& instance) {
+    // "pid_12345_luid_0xHHHHHHHH_0xLLLLLLLL_phys_0_eng_0_engtype_3D"
+    ParsedInstance out;
+    static const QString pidPrefix = QStringLiteral("pid_");
+    if (!instance.startsWith(pidPrefix)) {
+        return out;
     }
-    return instance.mid(start, end - start).toUInt();
+    int p = pidPrefix.size();
+    int pidStart = p;
+    while (p < instance.size() && instance[p].isDigit()) {
+        ++p;
+    }
+    if (p == pidStart) {
+        return out;
+    }
+    out.pid = instance.mid(pidStart, p - pidStart).toUInt();
+
+    static const QString luidTag = QStringLiteral("_luid_");
+    int luidPos = instance.indexOf(luidTag, p);
+    if (luidPos < 0) {
+        return out;
+    }
+    int q = luidPos + luidTag.size();
+    quint32 high = parseHexAfter(instance, q);
+    if (q < instance.size() && instance[q] == QLatin1Char('_')) {
+        ++q;
+    }
+    quint32 low = parseHexAfter(instance, q);
+    out.luidHigh = high;
+    out.luidLow  = low;
+    out.hasLuid  = true;
+    return out;
 }
 
 PDH_HCOUNTER addCounter(PDH_HQUERY q, const wchar_t* path) {
@@ -77,8 +118,14 @@ PDH_HCOUNTER addCounter(PDH_HQUERY q, const wchar_t* path) {
     return c;
 }
 
-QHash<quint32, quint64> collect(PDH_HCOUNTER counter) {
-    QHash<quint32, quint64> out;
+struct GpuPidValue {
+    quint32 pid = 0;
+    int gpuIndex = -1;
+    quint64 value = 0;
+};
+
+QList<GpuPidValue> collect(PDH_HCOUNTER counter, const GpuInventory* inv) {
+    QList<GpuPidValue> out;
     if (!counter) {
         return out;
     }
@@ -99,25 +146,29 @@ QHash<quint32, quint64> collect(PDH_HCOUNTER counter) {
         return out;
     }
 
+    out.reserve(static_cast<int>(itemCount));
     for (DWORD i = 0; i < itemCount; ++i) {
         const QString inst = QString::fromWCharArray(items[i].szName);
-        const quint32 pid = parsePidFromInstance(inst);
-        if (!pid) {
+        const ParsedInstance pi = parseInstance(inst);
+        if (!pi.pid) {
             continue;
         }
         const auto raw = items[i].FmtValue.largeValue;
         if (raw <= 0) {
             continue;
         }
-        // Several instances per PID (multiple GPUs / engine types). Sum them.
-        out[pid] += static_cast<quint64>(raw);
+        GpuPidValue v;
+        v.pid = pi.pid;
+        v.value = static_cast<quint64>(raw);
+        v.gpuIndex = (pi.hasLuid && inv) ? inv->indexForLuid(pi.luidHigh, pi.luidLow) : -1;
+        out.append(v);
     }
     return out;
 }
 
 } // namespace
 
-VramSampler::VramSampler() {
+VramSampler::VramSampler(const GpuInventory* inventory) : inventory_(inventory) {
     PDH_HQUERY q = nullptr;
     PDH_STATUS s = PdhOpenQueryW(nullptr, 0, &q);
     if (s != ERROR_SUCCESS) {
@@ -160,9 +211,9 @@ QHash<quint32, VramEntry> VramSampler::sample() {
         return result;
     }
 
-    const auto ded = collect(static_cast<PDH_HCOUNTER>(dedicatedCounter_));
-    const auto shr = collect(static_cast<PDH_HCOUNTER>(sharedCounter_));
-    const auto tot = collect(static_cast<PDH_HCOUNTER>(totalCounter_));
+    const auto ded = collect(static_cast<PDH_HCOUNTER>(dedicatedCounter_), inventory_);
+    const auto shr = collect(static_cast<PDH_HCOUNTER>(sharedCounter_),    inventory_);
+    const auto tot = collect(static_cast<PDH_HCOUNTER>(totalCounter_),     inventory_);
 
     auto touch = [&](quint32 pid) -> VramEntry& {
         auto it = result.find(pid);
@@ -174,20 +225,22 @@ QHash<quint32, VramEntry> VramSampler::sample() {
         return *it;
     };
 
-    for (auto it = ded.constBegin(); it != ded.constEnd(); ++it) {
-        touch(it.key()).dedicated = it.value();
+    for (const auto& v : ded) {
+        touch(v.pid).perGpu[v.gpuIndex].dedicated += v.value;
     }
-    for (auto it = shr.constBegin(); it != shr.constEnd(); ++it) {
-        touch(it.key()).shared = it.value();
+    for (const auto& v : shr) {
+        touch(v.pid).perGpu[v.gpuIndex].shared += v.value;
     }
-    for (auto it = tot.constBegin(); it != tot.constEnd(); ++it) {
-        touch(it.key()).total = it.value();
+    for (const auto& v : tot) {
+        touch(v.pid).perGpu[v.gpuIndex].total += v.value;
     }
 
     QHash<quint32, QString> snapCache;
     bool snapBuilt = false;
     for (auto it = result.begin(); it != result.end();) {
-        if (it.value().dedicated == 0 && it.value().shared == 0 && it.value().total == 0) {
+        if (it.value().dedicatedTotal() == 0 &&
+            it.value().sharedTotal() == 0 &&
+            it.value().committedTotal() == 0) {
             it = result.erase(it);
             continue;
         }

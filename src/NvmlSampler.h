@@ -4,15 +4,23 @@
 #include <QList>
 #include <QString>
 
+class GpuInventory;
+
 class NvmlSampler {
 public:
     struct DeviceSample {
         QString name;
+        int gpuIndex = -1;
         quint64 memUsed = 0;
         quint64 memTotal = 0;
     };
 
-    NvmlSampler();
+    struct ProcessSample {
+        quint64 residentTotal = 0;
+        QHash<int, quint64> perGpuIndex; // gpuIndex -> resident bytes (only entries with mapped index)
+    };
+
+    explicit NvmlSampler(const GpuInventory* inventory);
     ~NvmlSampler();
 
     NvmlSampler(const NvmlSampler&) = delete;
@@ -25,14 +33,15 @@ public:
     QList<QString> deviceNames() const;
     QList<DeviceSample> sampleDevices();
 
-    // pid -> resident frame-buffer bytes summed across NVIDIA devices
+    // pid -> per-NVIDIA-GPU resident frame-buffer bytes
     // (returns empty / NoNvidiaData on consumer WDDM cards)
-    QHash<quint32, quint64> sample();
+    QHash<quint32, ProcessSample> sample();
 
 private:
     struct Device {
         void* handle = nullptr;
         QString name;
+        int gpuIndex = -1;
     };
 
     bool ready_ = false;
@@ -48,6 +57,7 @@ private:
     void* fp_getMemoryInfo_ = nullptr;
     void* fp_getGraphicsProcesses_ = nullptr;
     void* fp_getComputeProcesses_ = nullptr;
+    void* fp_getPciInfo_ = nullptr;
 
     QList<Device> devices_;
 };

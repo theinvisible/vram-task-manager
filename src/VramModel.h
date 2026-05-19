@@ -11,6 +11,7 @@ public:
     enum Column {
         ColPid = 0,
         ColName,
+        ColGpu,
         ColDedicated,
         ColShared,
         ColTotal,

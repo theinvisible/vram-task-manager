@@ -150,15 +150,20 @@ QString formatBytes(quint64 b) {
     return QStringLiteral("%1 B").arg(b);
 }
 
+QString cardTitle(int gpuIndex, const QString& name) {
+    return QStringLiteral("GPU %1 · %2").arg(gpuIndex).arg(name);
+}
+
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("VRAM Task Manager"));
-    resize(960, 600);
+    resize(1080, 620);
     setStyleSheet(kStyleSheet);
 
-    sampler_ = std::make_unique<VramSampler>();
-    nvml_    = std::make_unique<NvmlSampler>();
+    inventory_ = std::make_unique<GpuInventory>();
+    sampler_ = std::make_unique<VramSampler>(inventory_.get());
+    nvml_    = std::make_unique<NvmlSampler>(inventory_.get());
     const bool nvmlReady = nvml_->isReady();
 
     auto* central = new QWidget(this);
@@ -172,14 +177,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* cardsRow = new QHBoxLayout;
     cardsRow->setSpacing(12);
     cardsRow->addWidget(makeCard(QStringLiteral("Prozesse"), kpiProcCount_));
-    cardsRow->addWidget(makeCard(QStringLiteral("Dediziert (Commit)"), kpiDedicated_));
-    cardsRow->addWidget(makeCard(QStringLiteral("Geteilt (System-RAM)"), kpiShared_));
+
+    // One card per DXGI adapter.
+    QHash<int, int> nvmlIndexByGpu;
     if (nvmlReady) {
-        for (const QString& devName : nvml_->deviceNames()) {
-            QLabel* lbl = nullptr;
-            cardsRow->addWidget(makeCard(devName, lbl));
-            kpiDeviceLabels_.append(lbl);
+        const auto devs = nvml_->sampleDevices();
+        for (int i = 0; i < devs.size(); ++i) {
+            if (devs[i].gpuIndex >= 0) {
+                nvmlIndexByGpu.insert(devs[i].gpuIndex, i);
+            }
         }
+    }
+    for (const auto& a : inventory_->adapters()) {
+        GpuCard c;
+        c.gpuIndex = a.index;
+        c.hasNvml = nvmlIndexByGpu.contains(a.index);
+        cardsRow->addWidget(makeCard(cardTitle(a.index, a.name), c.value));
+        gpuCards_.append(c);
     }
     cardsRow->addStretch(1);
     outer->addLayout(cardsRow);
@@ -212,6 +226,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     view_->verticalHeader()->setDefaultSectionSize(28);
     view_->horizontalHeader()->setStretchLastSection(false);
     view_->horizontalHeader()->setSectionResizeMode(VramModel::ColName, QHeaderView::Stretch);
+    view_->horizontalHeader()->setSectionResizeMode(VramModel::ColGpu, QHeaderView::ResizeToContents);
     view_->horizontalHeader()->setHighlightSections(false);
     outer->addWidget(view_, 1);
 
@@ -244,8 +259,8 @@ void MainWindow::refresh() {
     }
     auto entries = sampler_->sample();
 
-    quint64 totalNvidia = 0;
-    bool nvmlActive = nvml_ && nvml_->isReady();
+    const bool nvmlActive = nvml_ && nvml_->isReady();
+    QHash<int, NvmlSampler::DeviceSample> nvmlByGpu;
     if (nvmlActive) {
         const auto nvmlData = nvml_->sample();
         for (auto it = nvmlData.constBegin(); it != nvmlData.constEnd(); ++it) {
@@ -257,42 +272,82 @@ void MainWindow::refresh() {
                     e.name = QStringLiteral("<pid %1>").arg(it.key());
                 }
             }
-            e.nvidiaResident = it.value();
-            totalNvidia += it.value();
+            e.nvidiaResident = it.value().residentTotal;
+            // Make sure GPU column reflects NVIDIA-only entries.
+            for (auto pit = it.value().perGpuIndex.constBegin();
+                 pit != it.value().perGpuIndex.constEnd(); ++pit) {
+                if (pit.key() >= 0) {
+                    e.perGpu[pit.key()]; // touch to insert with zeroed bytes if missing
+                }
+            }
+        }
+
+        const auto devs = nvml_->sampleDevices();
+        for (const auto& d : devs) {
+            if (d.gpuIndex >= 0) {
+                nvmlByGpu.insert(d.gpuIndex, d);
+            }
         }
     }
 
-    quint64 totalDedicated = 0;
-    quint64 totalShared = 0;
+    // Per-GPU dedicated + shared totals from PDH.
+    QHash<int, quint64> dedicatedPerGpu;
+    QHash<int, quint64> sharedPerGpu;
     for (const auto& e : entries) {
-        totalDedicated += e.dedicated;
-        totalShared    += e.shared;
+        for (auto it = e.perGpu.constBegin(); it != e.perGpu.constEnd(); ++it) {
+            dedicatedPerGpu[it.key()] += it.value().dedicated;
+            sharedPerGpu[it.key()]    += it.value().shared;
+        }
     }
 
     model_->updateData(entries);
 
     kpiProcCount_->setText(QString::number(entries.size()));
-    kpiDedicated_->setText(formatBytes(totalDedicated));
-    kpiShared_->setText(formatBytes(totalShared));
 
-    Q_UNUSED(totalNvidia);
-
-    if (nvmlActive && !kpiDeviceLabels_.isEmpty()) {
-        const auto devs = nvml_->sampleDevices();
-        for (int i = 0; i < devs.size() && i < kpiDeviceLabels_.size(); ++i) {
-            const auto& d = devs[i];
+    for (const auto& card : gpuCards_) {
+        // Prefer NVML for NVIDIA adapters (more accurate used/total).
+        if (card.hasNvml) {
+            const auto& d = nvmlByGpu.value(card.gpuIndex);
             if (d.memTotal == 0) {
-                kpiDeviceLabels_[i]->setText(QStringLiteral("n/a"));
+                card.value->setText(QStringLiteral("n/a"));
                 continue;
             }
             const double used  = static_cast<double>(d.memUsed)  / (1024.0 * 1024.0 * 1024.0);
             const double total = static_cast<double>(d.memTotal) / (1024.0 * 1024.0 * 1024.0);
             const double pct   = 100.0 * static_cast<double>(d.memUsed) / static_cast<double>(d.memTotal);
-            kpiDeviceLabels_[i]->setText(QStringLiteral("%1 / %2 GiB  ·  %3%")
+            card.value->setText(QStringLiteral("%1 / %2 GiB · %3%")
                 .arg(used,  0, 'f', 2)
                 .arg(total, 0, 'f', 1)
                 .arg(pct,   0, 'f', 0));
+            continue;
         }
+
+        // Fall back to PDH sum / DXGI total (covers Intel/AMD iGPU + dGPU without NVML).
+        // iGPUs report ~0 dedicated VRAM; their usage lives in shared system memory.
+        quint64 dxgiDed = 0;
+        quint64 dxgiShr = 0;
+        for (const auto& a : inventory_->adapters()) {
+            if (a.index == card.gpuIndex) {
+                dxgiDed = a.dedicatedVideoMemory;
+                dxgiShr = a.sharedSystemMemory;
+                break;
+            }
+        }
+        const quint64 usedDed = dedicatedPerGpu.value(card.gpuIndex);
+        const quint64 usedShr = sharedPerGpu.value(card.gpuIndex);
+        const quint64 used    = usedDed + usedShr;
+        const quint64 total   = dxgiDed + dxgiShr;
+        if (total == 0) {
+            card.value->setText(formatBytes(used));
+            continue;
+        }
+        const double usedGiB  = static_cast<double>(used)  / (1024.0 * 1024.0 * 1024.0);
+        const double totalGiB = static_cast<double>(total) / (1024.0 * 1024.0 * 1024.0);
+        const double pct      = 100.0 * static_cast<double>(used) / static_cast<double>(total);
+        card.value->setText(QStringLiteral("%1 / %2 GiB · %3%")
+            .arg(usedGiB,  0, 'f', 2)
+            .arg(totalGiB, 0, 'f', 1)
+            .arg(pct,      0, 'f', 0));
     }
 
     if (nvmlActive) {
