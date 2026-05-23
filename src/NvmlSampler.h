@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QList>
 #include <QString>
@@ -7,6 +8,7 @@
 class GpuInventory;
 
 class NvmlSampler {
+    Q_DECLARE_TR_FUNCTIONS(NvmlSampler)
 public:
     struct DeviceSample {
         QString name;

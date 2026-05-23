@@ -154,13 +154,13 @@ QString formatBytes(quint64 b) {
 }
 
 QString cardTitle(int gpuIndex, const QString& name) {
-    return QStringLiteral("GPU %1 · %2").arg(gpuIndex).arg(name);
+    return MainWindow::tr("GPU %1 · %2").arg(gpuIndex).arg(name);
 }
 
 } // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-    setWindowTitle(QStringLiteral("VRAM Task Manager"));
+    setWindowTitle(tr("VRAM Task Manager"));
     resize(1080, 620);
     setStyleSheet(kStyleSheet);
 
@@ -179,7 +179,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     auto* cardsRow = new QHBoxLayout;
     cardsRow->setSpacing(12);
-    cardsRow->addWidget(makeCard(QStringLiteral("Prozesse"), kpiProcCount_));
+    cardsRow->addWidget(makeCard(tr("Processes"), kpiProcCount_));
 
     // One card per DXGI adapter.
     QHash<int, int> nvmlIndexByGpu;
@@ -203,7 +203,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     searchEdit_ = new QLineEdit;
     searchEdit_->setObjectName(QStringLiteral("searchEdit"));
-    searchEdit_->setPlaceholderText(QStringLiteral("Prozess filtern…"));
+    searchEdit_->setPlaceholderText(tr("Filter processes…"));
     searchEdit_->setClearButtonEnabled(true);
     outer->addWidget(searchEdit_);
 
@@ -247,7 +247,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
 
     if (!sampler_->isReady()) {
-        footer_->setText(QStringLiteral("Fehler: %1").arg(sampler_->lastError()));
+        footer_->setText(tr("Error: %1").arg(sampler_->lastError()));
         footer_->setVisible(true);
         return;
     }
@@ -316,7 +316,7 @@ void MainWindow::refresh() {
         if (card.hasNvml) {
             const auto& d = nvmlByGpu.value(card.gpuIndex);
             if (d.memTotal == 0) {
-                card.value->setText(QStringLiteral("n/a"));
+                card.value->setText(tr("n/a"));
                 continue;
             }
             const double used  = static_cast<double>(d.memUsed)  / (1024.0 * 1024.0 * 1024.0);

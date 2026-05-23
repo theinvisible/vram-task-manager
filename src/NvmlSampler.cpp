@@ -88,7 +88,7 @@ NvmlSampler::NvmlSampler(const GpuInventory* inventory) {
         m = LoadLibraryW(L"C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvml.dll");
     }
     if (!m) {
-        lastError_ = QStringLiteral("nvml.dll nicht gefunden — kein NVIDIA-Treiber?");
+        lastError_ = tr("nvml.dll not found — no NVIDIA driver?");
         return;
     }
     lib_ = m;
@@ -107,7 +107,7 @@ NvmlSampler::NvmlSampler(const GpuInventory* inventory) {
     }
 
     if (!fp_init_ || !fp_shutdown_ || !fp_getDeviceCount_ || !fp_getDeviceHandle_) {
-        lastError_ = QStringLiteral("nvml.dll: erforderliche Symbole fehlen");
+        lastError_ = tr("nvml.dll: required symbols missing");
         return;
     }
 
@@ -204,7 +204,7 @@ QHash<quint32, NvmlSampler::ProcessSample> NvmlSampler::sample() {
         return out;
     }
     if (!fp_getGraphicsProcesses_ && !fp_getComputeProcesses_) {
-        diagnostics_ = QStringLiteral("NVML: *RunningProcesses_v3 fehlt");
+        diagnostics_ = tr("NVML: *RunningProcesses_v3 missing");
         return out;
     }
 
@@ -255,9 +255,9 @@ QHash<quint32, NvmlSampler::ProcessSample> NvmlSampler::sample() {
     }
 
     if (out.isEmpty() && totalProcs > 0 && unavailValues == totalProcs) {
-        diagnostics_ = QStringLiteral(
-            "Per-Prozess-VRAM nicht verfuegbar (WDDM-Modus, Consumer-GPU). "
-            "Karten-Gesamtwert oben ist verlaesslich.");
+        diagnostics_ = tr(
+            "Per-process VRAM not available (WDDM mode, consumer GPU). "
+            "Per-card total above is reliable.");
     } else if (out.isEmpty() && (lastGfxRc != NVML_SUCCESS || lastCmpRc != NVML_SUCCESS)) {
         diagnostics_ = QStringLiteral("NVML: gfx_rc=%1 cmp_rc=%2").arg(lastGfxRc).arg(lastCmpRc);
     }

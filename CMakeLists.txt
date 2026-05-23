@@ -13,7 +13,7 @@ endif()
 
 # Try the standard find_package first — covers CI (install-qt-action sets
 # Qt6_DIR / CMAKE_PREFIX_PATH / QT_ROOT_DIR) and any explicit user-supplied prefix.
-find_package(Qt6 QUIET COMPONENTS Widgets)
+find_package(Qt6 QUIET COMPONENTS Widgets LinguistTools)
 
 # Local-dev fallback: scan known Qt roots (Desktop: H:/Qt, Notebook: C:/Qt) for
 # the newest 6.x MSVC/MinGW kit.
@@ -44,7 +44,7 @@ if(NOT Qt6_FOUND)
         list(PREPEND CMAKE_PREFIX_PATH "${_qt_found_dir}")
         set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
         message(STATUS "Auto-detected Qt6 at ${_qt_found_dir}")
-        find_package(Qt6 REQUIRED COMPONENTS Widgets)
+        find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
     else()
         message(FATAL_ERROR "Qt6 nicht gefunden — Qt6_DIR/CMAKE_PREFIX_PATH setzen oder Qt unter H:/Qt bzw. C:/Qt installieren.")
     endif()
@@ -71,6 +71,17 @@ target_link_libraries(vram-task-manager PRIVATE
     pdh
     psapi
     dxgi
+)
+
+# Compile .ts → .qm and embed under the Qt resource prefix /i18n. Source
+# language is English; main.cpp picks the best match for QLocale::system()
+# and silently falls back to English when no .qm matches.
+set(TS_FILES
+    translations/vram-task-manager_de.ts
+)
+qt_add_translations(vram-task-manager
+    TS_FILES ${TS_FILES}
+    RESOURCE_PREFIX "/i18n"
 )
 
 target_compile_definitions(vram-task-manager PRIVATE

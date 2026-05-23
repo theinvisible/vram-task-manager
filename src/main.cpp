@@ -2,8 +2,11 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QLibraryInfo>
+#include <QLocale>
 #include <QPalette>
 #include <QStyleFactory>
+#include <QTranslator>
 
 #include "MainWindow.h"
 
@@ -52,6 +55,22 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("VRAM Task Manager"));
     QApplication::setOrganizationName(QStringLiteral("iteas"));
+
+    // Pick the best-matching app translation for the system locale; if none
+    // matches we silently fall back to the source language (English).
+    static QTranslator appTranslator;
+    if (appTranslator.load(QLocale(), QStringLiteral("vram-task-manager"),
+                           QStringLiteral("_"), QStringLiteral(":/i18n"))) {
+        QApplication::installTranslator(&appTranslator);
+    }
+    // Standard Qt dialogs (e.g. "OK"/"Cancel") — load if Qt ships a matching
+    // .qm next to the binary or in Qt's translations dir.
+    static QTranslator qtTranslator;
+    const QString qtTrDir = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+    if (qtTranslator.load(QLocale(), QStringLiteral("qtbase"),
+                          QStringLiteral("_"), qtTrDir)) {
+        QApplication::installTranslator(&qtTranslator);
+    }
 
     applyDarkTheme();
 

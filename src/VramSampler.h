@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCoreApplication>
 #include <QHash>
 #include <QList>
 #include <QString>
@@ -52,6 +53,7 @@ struct VramEntry {
 };
 
 class VramSampler {
+    Q_DECLARE_TR_FUNCTIONS(VramSampler)
 public:
     explicit VramSampler(const GpuInventory* inventory);
     ~VramSampler();

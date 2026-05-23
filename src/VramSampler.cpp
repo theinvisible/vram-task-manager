@@ -183,9 +183,9 @@ VramSampler::VramSampler(const GpuInventory* inventory) : inventory_(inventory) 
     totalCounter_     = addCounter(q, L"\\GPU Process Memory(*)\\Total Committed");
 
     if (!dedicatedCounter_ && !sharedCounter_ && !totalCounter_) {
-        lastError_ = QStringLiteral(
-            "Performance-Counter \"GPU Process Memory\" nicht verfuegbar. "
-            "Benoetigt Windows 10 1709+ mit WDDM 2.0 Treiber.");
+        lastError_ = tr(
+            "Performance counter \"GPU Process Memory\" not available. "
+            "Requires Windows 10 1709+ with a WDDM 2.0 driver.");
         return;
     }
 

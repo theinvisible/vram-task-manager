@@ -4,3 +4,6 @@ out/
 .idea/
 .vs/
 *.user
+
+# Compiled Qt translations — .ts is source of truth, .qm is generated.
+translations/*.qm
