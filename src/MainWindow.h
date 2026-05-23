@@ -24,8 +24,13 @@ public:
 
 private slots:
     void refresh();
+    void showHeaderContextMenu(const QPoint& pos);
 
 private:
+    void loadColumnVisibility();
+    void saveColumnVisibility();
+    void setColumnVisible(int column, bool visible);
+
     struct GpuCard {
         int gpuIndex = -1;
         QLabel* value = nullptr;

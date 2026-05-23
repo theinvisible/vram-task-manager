@@ -1,10 +1,13 @@
 #include "MainWindow.h"
 
+#include <QAction>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
+#include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QTableView>
 #include <QTimer>
@@ -228,6 +231,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     view_->horizontalHeader()->setSectionResizeMode(VramModel::ColName, QHeaderView::Stretch);
     view_->horizontalHeader()->setSectionResizeMode(VramModel::ColGpu, QHeaderView::ResizeToContents);
     view_->horizontalHeader()->setHighlightSections(false);
+    view_->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(view_->horizontalHeader(), &QHeaderView::customContextMenuRequested,
+            this, &MainWindow::showHeaderContextMenu);
+    loadColumnVisibility();
     outer->addWidget(view_, 1);
 
     footer_ = new QLabel;
@@ -359,4 +366,52 @@ void MainWindow::refresh() {
             footer_->setVisible(false);
         }
     }
+}
+
+void MainWindow::showHeaderContextMenu(const QPoint& pos) {
+    QMenu menu(this);
+    const int cols = model_->columnCount();
+    for (int c = 0; c < cols; ++c) {
+        const QString label = model_->headerData(c, Qt::Horizontal).toString();
+        if (label.isEmpty()) continue;
+        auto* action = menu.addAction(label);
+        action->setCheckable(true);
+        action->setChecked(!view_->isColumnHidden(c));
+        // Don't allow hiding the Name column (always need at least one identifying column).
+        if (c == VramModel::ColName) {
+            action->setEnabled(false);
+        }
+        connect(action, &QAction::toggled, this, [this, c](bool checked) {
+            setColumnVisible(c, checked);
+        });
+    }
+    menu.exec(view_->horizontalHeader()->viewport()->mapToGlobal(pos));
+}
+
+void MainWindow::setColumnVisible(int column, bool visible) {
+    view_->setColumnHidden(column, !visible);
+    saveColumnVisibility();
+}
+
+void MainWindow::loadColumnVisibility() {
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("ProcessTable"));
+    const int cols = model_->columnCount();
+    for (int c = 0; c < cols; ++c) {
+        const QString key = QStringLiteral("col_%1_visible").arg(c);
+        const bool visible = settings.value(key, true).toBool();
+        view_->setColumnHidden(c, !visible);
+    }
+    settings.endGroup();
+}
+
+void MainWindow::saveColumnVisibility() {
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("ProcessTable"));
+    const int cols = model_->columnCount();
+    for (int c = 0; c < cols; ++c) {
+        const QString key = QStringLiteral("col_%1_visible").arg(c);
+        settings.setValue(key, !view_->isColumnHidden(c));
+    }
+    settings.endGroup();
 }

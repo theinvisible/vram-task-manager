@@ -53,19 +53,60 @@ int VramModel::columnCount(const QModelIndex& parent) const {
 }
 
 QVariant VramModel::headerData(int section, Qt::Orientation orientation, int role) const {
-    if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
+    if (orientation != Qt::Horizontal) {
         return {};
     }
-    switch (section) {
-        case ColPid:       return QStringLiteral("PID");
-        case ColName:      return QStringLiteral("Prozess");
-        case ColGpu:       return QStringLiteral("GPU");
-        case ColDedicated: return QStringLiteral("Dediziert (VRAM)");
-        case ColShared:    return QStringLiteral("Geteilt (System-RAM)");
-        case ColTotal:     return QStringLiteral("Gesamt (Commit)");
-        case ColNvidia:    return QStringLiteral("NVIDIA (resident)");
-        default:           return {};
+    if (role == Qt::DisplayRole) {
+        switch (section) {
+            case ColPid:       return QStringLiteral("PID");
+            case ColName:      return QStringLiteral("Prozess");
+            case ColGpu:       return QStringLiteral("GPU");
+            case ColDedicated: return QStringLiteral("Dediziert (VRAM)");
+            case ColShared:    return QStringLiteral("Geteilt (System-RAM)");
+            case ColTotal:     return QStringLiteral("Gesamt (Commit)");
+            case ColNvidia:    return QStringLiteral("NVIDIA (resident)");
+            default:           return {};
+        }
     }
+    if (role == Qt::ToolTipRole) {
+        switch (section) {
+            case ColPid:
+                return QStringLiteral(
+                    "Prozess-ID (PID) des Windows-Prozesses, der GPU-Speicher belegt.");
+            case ColName:
+                return QStringLiteral(
+                    "Name der ausführbaren Datei des Prozesses.");
+            case ColGpu:
+                return QStringLiteral(
+                    "GPU(s), auf denen der Prozess Speicher belegt — Index entspricht\n"
+                    "den oben gezeigten GPU-Karten. Mehrere Werte bedeuten, dass der\n"
+                    "Prozess auf mehreren Adaptern gleichzeitig läuft.");
+            case ColDedicated:
+                return QStringLiteral(
+                    "Dedizierter Grafikspeicher (VRAM), den der Prozess auf der GPU\n"
+                    "selbst belegt. Quelle: Windows-Performance-Counter (PDH,\n"
+                    "GPU Process Memory → Dedicated Usage). Summiert über alle GPUs.");
+            case ColShared:
+                return QStringLiteral(
+                    "Geteilter Speicher: Teil des System-RAMs, der der GPU zur\n"
+                    "Verfügung gestellt wird (z. B. von iGPUs intensiv genutzt, bei\n"
+                    "dGPUs als Überlauf). Quelle: PDH, GPU Process Memory → Shared Usage.");
+            case ColTotal:
+                return QStringLiteral(
+                    "Gesamter GPU-Speicher, den der Prozess committed hat\n"
+                    "(Dediziert + Geteilt). Entspricht dem, was Windows als gesamten\n"
+                    "GPU-Speicherverbrauch des Prozesses meldet.");
+            case ColNvidia:
+                return QStringLiteral(
+                    "Resident VRAM laut NVIDIA NVML — nur für NVIDIA-Karten verfügbar.\n"
+                    "In der Regel der genaueste Wert für tatsächlich auf der GPU\n"
+                    "liegende Daten. „—\" bedeutet, dass NVML keine Daten zu diesem\n"
+                    "Prozess liefert (z. B. nicht-NVIDIA-Prozess).");
+            default:
+                return {};
+        }
+    }
+    return {};
 }
 
 QVariant VramModel::data(const QModelIndex& index, int role) const {
