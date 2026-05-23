@@ -178,8 +178,22 @@ VramSampler::VramSampler(const GpuInventory* inventory) : inventory_(inventory) 
     }
     query_ = q;
 
-    dedicatedCounter_ = addCounter(q, L"\\GPU Process Memory(*)\\Dedicated Usage");
-    sharedCounter_    = addCounter(q, L"\\GPU Process Memory(*)\\Shared Usage");
+    // "Local Usage" / "Non Local Usage" report what's currently *resident* in
+    // local (VRAM) / non-local (system-memory aperture) memory segments —
+    // this matches what Windows Task Manager shows in its "Dedicated GPU
+    // memory" / "Shared GPU memory" columns. The older "Dedicated Usage" /
+    // "Shared Usage" counters report *committed* bytes instead, which can be
+    // several times larger when the driver has paged memory out of VRAM.
+    // Fall back to the legacy counters on systems where Local/Non Local
+    // aren't exposed (pre-Windows-10 1809-ish).
+    dedicatedCounter_ = addCounter(q, L"\\GPU Process Memory(*)\\Local Usage");
+    if (!dedicatedCounter_) {
+        dedicatedCounter_ = addCounter(q, L"\\GPU Process Memory(*)\\Dedicated Usage");
+    }
+    sharedCounter_    = addCounter(q, L"\\GPU Process Memory(*)\\Non Local Usage");
+    if (!sharedCounter_) {
+        sharedCounter_    = addCounter(q, L"\\GPU Process Memory(*)\\Shared Usage");
+    }
     totalCounter_     = addCounter(q, L"\\GPU Process Memory(*)\\Total Committed");
 
     if (!dedicatedCounter_ && !sharedCounter_ && !totalCounter_) {

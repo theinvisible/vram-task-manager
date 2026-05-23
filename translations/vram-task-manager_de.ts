@@ -83,6 +83,10 @@
         <source>About VRAM Task Manager</source>
         <translation>Über VRAM Task Manager</translation>
     </message>
+    <message>
+        <source>Driver / kernel: %1</source>
+        <translation>Treiber / Kernel: %1</translation>
+    </message>
 </context>
 <context>
     <name>AboutDialog</name>
@@ -192,29 +196,34 @@ den oben gezeigten GPU-Karten. Mehrere Werte bedeuten, dass der
 Prozess auf mehreren Adaptern gleichzeitig läuft.</translation>
     </message>
     <message>
-        <source>Dedicated graphics memory (VRAM) that the process holds on the
-GPU itself. Source: Windows performance counter (PDH,
-GPU Process Memory → Dedicated Usage). Summed across all GPUs.</source>
-        <translation>Dedizierter Grafikspeicher (VRAM), den der Prozess auf der GPU
-selbst belegt. Quelle: Windows-Performance-Counter (PDH,
-GPU Process Memory → Dedicated Usage). Summiert über alle GPUs.</translation>
+        <source>Dedicated VRAM currently resident on the GPU for this process.
+Source: PDH counter &quot;GPU Process Memory → Local Usage&quot; —
+the same value the Windows Task Manager shows in its
+&quot;Dedicated GPU memory&quot; column. Summed across all GPUs.</source>
+        <translation>Dedizierter VRAM, der für diesen Prozess aktuell auf der GPU
+resident ist. Quelle: PDH-Counter „GPU Process Memory → Local
+Usage" — derselbe Wert, den der Windows-Task-Manager in der
+Spalte „Dedizierter GPU-Speicher" anzeigt. Summiert über alle GPUs.</translation>
     </message>
     <message>
-        <source>Shared memory: portion of system RAM made available to the GPU
+        <source>Non-local memory currently resident in the system-RAM aperture
 (used heavily by iGPUs; on dGPUs typically only as overflow).
-Source: PDH, GPU Process Memory → Shared Usage.</source>
-        <translation>Geteilter Speicher: Teil des System-RAMs, der der GPU zur
-Verfügung gestellt wird (von iGPUs intensiv genutzt, bei
-dGPUs üblicherweise nur als Überlauf). Quelle: PDH,
-GPU Process Memory → Shared Usage.</translation>
+Source: PDH &quot;GPU Process Memory → Non Local Usage&quot;, matches
+Task Manager's &quot;Shared GPU memory&quot; column.</source>
+        <translation>Non-local Speicher, der aktuell im System-RAM-Aperture resident
+ist (von iGPUs intensiv genutzt, bei dGPUs meist nur als Überlauf).
+Quelle: PDH „GPU Process Memory → Non Local Usage", entspricht
+der Spalte „Gemeinsamer GPU-Speicher" im Task-Manager.</translation>
     </message>
     <message>
-        <source>Total GPU memory the process has committed (Dedicated + Shared).
-Matches what Windows reports as the process's overall GPU
-memory usage.</source>
-        <translation>Gesamter GPU-Speicher, den der Prozess committed hat
-(Dediziert + Geteilt). Entspricht dem, was Windows als gesamten
-GPU-Speicherverbrauch des Prozesses meldet.</translation>
+        <source>Total GPU memory the process has committed (including pages that
+may currently be evicted from VRAM). Source: PDH
+&quot;GPU Process Memory → Total Committed&quot;. Can be larger than the
+sum of the resident columns when the driver pages memory out.</source>
+        <translation>Gesamter vom Prozess committeter GPU-Speicher (inklusive Pages,
+die aktuell aus dem VRAM ausgelagert sein können). Quelle: PDH
+„GPU Process Memory → Total Committed". Kann größer als die Summe
+der Resident-Spalten sein, wenn der Treiber Speicher auslagert.</translation>
     </message>
     <message>
         <source>Resident VRAM as reported by NVIDIA NVML — only available for

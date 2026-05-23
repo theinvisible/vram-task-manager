@@ -41,6 +41,7 @@ private:
     struct GpuCard {
         int gpuIndex = -1;
         QLabel* value = nullptr;
+        QLabel* detail = nullptr;
         bool hasNvml = false;
     };
 

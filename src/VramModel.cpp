@@ -81,19 +81,22 @@ QVariant VramModel::headerData(int section, Qt::Orientation orientation, int rol
                     "is running on several adapters at the same time.");
             case ColDedicated:
                 return tr(
-                    "Dedicated graphics memory (VRAM) that the process holds on the\n"
-                    "GPU itself. Source: Windows performance counter (PDH,\n"
-                    "GPU Process Memory → Dedicated Usage). Summed across all GPUs.");
+                    "Dedicated VRAM currently resident on the GPU for this process.\n"
+                    "Source: PDH counter \"GPU Process Memory → Local Usage\" —\n"
+                    "the same value the Windows Task Manager shows in its\n"
+                    "\"Dedicated GPU memory\" column. Summed across all GPUs.");
             case ColShared:
                 return tr(
-                    "Shared memory: portion of system RAM made available to the GPU\n"
+                    "Non-local memory currently resident in the system-RAM aperture\n"
                     "(used heavily by iGPUs; on dGPUs typically only as overflow).\n"
-                    "Source: PDH, GPU Process Memory → Shared Usage.");
+                    "Source: PDH \"GPU Process Memory → Non Local Usage\", matches\n"
+                    "Task Manager's \"Shared GPU memory\" column.");
             case ColTotal:
                 return tr(
-                    "Total GPU memory the process has committed (Dedicated + Shared).\n"
-                    "Matches what Windows reports as the process's overall GPU\n"
-                    "memory usage.");
+                    "Total GPU memory the process has committed (including pages that\n"
+                    "may currently be evicted from VRAM). Source: PDH\n"
+                    "\"GPU Process Memory → Total Committed\". Can be larger than the\n"
+                    "sum of the resident columns when the driver pages memory out.");
             case ColNvidia:
                 return tr(
                     "Resident VRAM as reported by NVIDIA NVML — only available for\n"

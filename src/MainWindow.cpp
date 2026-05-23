@@ -50,6 +50,12 @@ QLabel#kpiValue {
     font-size: 20px;
     font-weight: 600;
 }
+QLabel#kpiDetail {
+    color: #8b919e;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+}
 QLineEdit#searchEdit {
     background-color: #1e2128;
     border: 1px solid #2a2e38;
@@ -161,7 +167,7 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 }
 )");
 
-QFrame* makeCard(const QString& title, QLabel*& valueOut) {
+QFrame* makeCard(const QString& title, QLabel*& valueOut, QLabel** detailOut = nullptr) {
     auto* card = new QFrame;
     card->setObjectName(QStringLiteral("kpiCard"));
 
@@ -177,6 +183,14 @@ QFrame* makeCard(const QString& title, QLabel*& valueOut) {
 
     layout->addWidget(titleLabel);
     layout->addWidget(value);
+
+    if (detailOut) {
+        auto* detail = new QLabel;
+        detail->setObjectName(QStringLiteral("kpiDetail"));
+        detail->setVisible(false);
+        layout->addWidget(detail);
+        *detailOut = detail;
+    }
 
     valueOut = value;
     return card;
@@ -235,7 +249,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         GpuCard c;
         c.gpuIndex = a.index;
         c.hasNvml = nvmlIndexByGpu.contains(a.index);
-        cardsRow->addWidget(makeCard(cardTitle(a.index, a.name), c.value));
+        cardsRow->addWidget(makeCard(cardTitle(a.index, a.name), c.value, &c.detail));
         gpuCards_.append(c);
     }
     cardsRow->addStretch(1);
@@ -385,6 +399,7 @@ void MainWindow::refresh() {
             const auto& d = nvmlByGpu.value(card.gpuIndex);
             if (d.memTotal == 0) {
                 card.value->setText(tr("n/a"));
+                if (card.detail) card.detail->setVisible(false);
                 continue;
             }
             const double used  = static_cast<double>(d.memUsed)  / (1024.0 * 1024.0 * 1024.0);
@@ -394,8 +409,26 @@ void MainWindow::refresh() {
                 .arg(used,  0, 'f', 2)
                 .arg(total, 0, 'f', 1)
                 .arg(pct,   0, 'f', 0));
+
+            // Whatever NVML reports as resident on the card, minus what we
+            // can attribute to user-mode processes, is driver/kernel overhead.
+            // Clamp tiny / negative values (sampling skew between NVML and PDH).
+            if (card.detail) {
+                const quint64 procDed = dedicatedPerGpu.value(card.gpuIndex);
+                const qint64  delta   = static_cast<qint64>(d.memUsed)
+                                      - static_cast<qint64>(procDed);
+                constexpr qint64 kNoiseFloor = 16 * 1024 * 1024; // 16 MiB
+                if (delta > kNoiseFloor) {
+                    card.detail->setText(tr("Driver / kernel: %1")
+                        .arg(formatBytes(static_cast<quint64>(delta))));
+                    card.detail->setVisible(true);
+                } else {
+                    card.detail->setVisible(false);
+                }
+            }
             continue;
         }
+        if (card.detail) card.detail->setVisible(false);
 
         // Fall back to PDH sum / DXGI total (covers Intel/AMD iGPU + dGPU without NVML).
         // iGPUs report ~0 dedicated VRAM; their usage lives in shared system memory.
