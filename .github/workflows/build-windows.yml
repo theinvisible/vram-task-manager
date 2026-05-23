@@ -20,7 +20,7 @@ jobs:
     runs-on: windows-2022
 
     env:
-      QT_VERSION: 6.10.2
+      QT_VERSION: 6.11.1
       QT_DIR: C:/Qt
       BUILD_DIR: build
 
@@ -39,6 +39,8 @@ jobs:
           arch: win64_msvc2022_64
           dir: ${{ env.QT_DIR }}
           cache: true
+          # Qt 6.11 changed the per-toolchain repo layout; needs aqtinstall ≥ 3.3.
+          aqtversion: '>=3.3.0'
 
       # MSVC env vars (INCLUDE, LIB, PATH) must be exported BEFORE configure so
       # cl.exe/link.exe and rc.exe see the Windows SDK paths. Mirrors what
