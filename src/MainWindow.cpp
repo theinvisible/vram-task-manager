@@ -1,19 +1,30 @@
 #include "MainWindow.h"
 
 #include <QAction>
+#include <QApplication>
+#include <QDesktopServices>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
+#include <QProcess>
+#include <QProgressDialog>
+#include <QPushButton>
 #include <QSettings>
 #include <QSortFilterProxyModel>
+#include <QStyle>
 #include <QTableView>
 #include <QTimer>
+#include <QToolButton>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include "AboutDialog.h"
+#include "UpdateChecker.h"
 #include "VramModel.h"
 
 namespace {
@@ -53,6 +64,35 @@ QLineEdit#searchEdit:focus {
 QLabel#footer {
     color: #8b919e;
     font-size: 11px;
+}
+QToolButton#aboutBtn {
+    background-color: #1e2128;
+    border: 1px solid #2a2e38;
+    border-radius: 14px;
+    color: #b6bcc6;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: "Segoe UI", sans-serif;
+    min-width: 28px;
+    min-height: 28px;
+    max-width: 28px;
+    max-height: 28px;
+    padding: 0;
+}
+QToolButton#aboutBtn:hover {
+    color: #ffffff;
+    border-color: #3a7bd5;
+    background-color: #232732;
+}
+QToolButton#aboutBtn:pressed {
+    background-color: #2a2e38;
+}
+QToolButton#aboutBtn[updateState="updateAvailable"] {
+    color: #ecae5c;
+    border-color: #d18b3a;
+}
+QToolButton#aboutBtn[updateState="upToDate"] {
+    color: #b6bcc6;
 }
 QTableView {
     background-color: #1a1d24;
@@ -199,6 +239,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         gpuCards_.append(c);
     }
     cardsRow->addStretch(1);
+
+    aboutBtn_ = new QToolButton;
+    aboutBtn_->setObjectName(QStringLiteral("aboutBtn"));
+    aboutBtn_->setText(QStringLiteral("i"));
+    aboutBtn_->setToolTip(tr("About VRAM Task Manager"));
+    aboutBtn_->setCursor(Qt::PointingHandCursor);
+    aboutBtn_->setFocusPolicy(Qt::NoFocus);
+    connect(aboutBtn_, &QToolButton::clicked, this, &MainWindow::showAboutDialog);
+    cardsRow->addWidget(aboutBtn_, 0, Qt::AlignTop | Qt::AlignRight);
+
     outer->addLayout(cardsRow);
 
     searchEdit_ = new QLineEdit;
@@ -256,6 +306,24 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(timer_, &QTimer::timeout, this, &MainWindow::refresh);
     timer_->start(1000);
     QTimer::singleShot(0, this, &MainWindow::refresh);
+
+    // Update check: fire once a few seconds after launch so it doesn't compete
+    // with first-frame work. Silent on failure.
+    updates_ = new UpdateChecker(this);
+    connect(updates_, &UpdateChecker::updateAvailable,
+            this, &MainWindow::onUpdateAvailable);
+    connect(updates_, &UpdateChecker::stateChanged, this,
+            [this](UpdateChecker::State s) {
+                const char* prop =
+                    s == UpdateChecker::State::UpdateAvailable ? "updateAvailable"
+                    : s == UpdateChecker::State::UpToDate      ? "upToDate"
+                                                               : "";
+                aboutBtn_->setProperty("updateState", QString::fromLatin1(prop));
+                aboutBtn_->style()->unpolish(aboutBtn_);
+                aboutBtn_->style()->polish(aboutBtn_);
+                aboutBtn_->update();
+            });
+    QTimer::singleShot(3000, updates_, &UpdateChecker::checkAsync);
 }
 
 MainWindow::~MainWindow() = default;
@@ -414,4 +482,103 @@ void MainWindow::saveColumnVisibility() {
         settings.setValue(key, !view_->isColumnHidden(c));
     }
     settings.endGroup();
+}
+
+void MainWindow::onUpdateAvailable(const QString& version,
+                                   const QString& installerUrl,
+                                   const QString& releaseUrl) {
+    // Respect "skip this version" preference.
+    QSettings settings;
+    if (settings.value(QStringLiteral("Updates/skippedVersion")).toString() == version) {
+        return;
+    }
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Information);
+    box.setWindowTitle(tr("Update available"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(tr("<b>VRAM Task Manager %1</b> is available — you have %2.")
+                    .arg(version, UpdateChecker::currentVersion()));
+    box.setInformativeText(
+        tr("Download and install the new version now?"));
+
+    auto* installBtn = box.addButton(tr("Update now"), QMessageBox::AcceptRole);
+    auto* laterBtn   = box.addButton(tr("Remind me later"), QMessageBox::RejectRole);
+    auto* skipBtn    = box.addButton(tr("Skip this version"), QMessageBox::DestructiveRole);
+    box.setDefaultButton(installBtn);
+
+    // "View release notes" link button — opens the GitHub release page.
+    if (!releaseUrl.isEmpty()) {
+        auto* notesBtn = box.addButton(tr("Release notes…"), QMessageBox::HelpRole);
+        connect(notesBtn, &QPushButton::clicked, this, [releaseUrl] {
+            QDesktopServices::openUrl(QUrl(releaseUrl));
+        });
+    }
+
+    box.exec();
+    QAbstractButton* clicked = box.clickedButton();
+    if (clicked == installBtn) {
+        if (installerUrl.isEmpty()) {
+            // No installer asset — fall back to opening the release page.
+            QDesktopServices::openUrl(QUrl(releaseUrl));
+            return;
+        }
+        startInstallerDownload(installerUrl);
+    } else if (clicked == skipBtn) {
+        settings.setValue(QStringLiteral("Updates/skippedVersion"), version);
+    }
+    // "later" / dialog close: do nothing — we'll prompt again on next launch.
+}
+
+void MainWindow::showAboutDialog() {
+    AboutDialog dlg(updates_, this);
+    connect(&dlg, &AboutDialog::installUpdateRequested,
+            this, &MainWindow::startInstallerDownload);
+    dlg.exec();
+}
+
+void MainWindow::startInstallerDownload(const QString& url) {
+    auto* progress = new QProgressDialog(
+        tr("Downloading update…"), tr("Cancel"), 0, 100, this);
+    progress->setWindowTitle(tr("VRAM Task Manager"));
+    progress->setWindowModality(Qt::WindowModal);
+    progress->setMinimumDuration(0);
+    progress->setAutoClose(false);
+    progress->setAutoReset(false);
+    progress->setValue(0);
+
+    connect(updates_, &UpdateChecker::downloadProgress, progress,
+            [progress](qint64 received, qint64 total) {
+                if (total > 0) {
+                    progress->setMaximum(100);
+                    progress->setValue(static_cast<int>(100 * received / total));
+                } else {
+                    progress->setMaximum(0); // indeterminate
+                }
+            });
+    connect(progress, &QProgressDialog::canceled, updates_, &UpdateChecker::cancelDownload);
+
+    connect(updates_, &UpdateChecker::downloadFailed, progress,
+            [this, progress](const QString& reason) {
+                progress->close();
+                progress->deleteLater();
+                QMessageBox::warning(this, tr("Update failed"),
+                                     tr("Could not download the installer:\n%1").arg(reason));
+            });
+
+    connect(updates_, &UpdateChecker::downloadFinished, progress,
+            [this, progress](const QString& localPath) {
+                progress->close();
+                progress->deleteLater();
+                // Launch the installer detached and quit so it can replace
+                // our running executable. Inno Setup handles elevation itself.
+                if (!QProcess::startDetached(localPath, QStringList())) {
+                    QMessageBox::warning(this, tr("Update failed"),
+                                         tr("Could not start the installer:\n%1").arg(localPath));
+                    return;
+                }
+                QApplication::quit();
+            });
+
+    updates_->downloadInstaller(url);
 }

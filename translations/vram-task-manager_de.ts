@@ -27,6 +27,119 @@
         <source>n/a</source>
         <translation>n. v.</translation>
     </message>
+    <message>
+        <source>Update available</source>
+        <translation>Update verfügbar</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;VRAM Task Manager %1&lt;/b&gt; is available — you have %2.</source>
+        <translation>&lt;b&gt;VRAM Task Manager %1&lt;/b&gt; ist verfügbar — installiert ist %2.</translation>
+    </message>
+    <message>
+        <source>Download and install the new version now?</source>
+        <translation>Die neue Version jetzt herunterladen und installieren?</translation>
+    </message>
+    <message>
+        <source>Update now</source>
+        <translation>Jetzt aktualisieren</translation>
+    </message>
+    <message>
+        <source>Remind me later</source>
+        <translation>Später erinnern</translation>
+    </message>
+    <message>
+        <source>Skip this version</source>
+        <translation>Diese Version überspringen</translation>
+    </message>
+    <message>
+        <source>Release notes…</source>
+        <translation>Release-Notes…</translation>
+    </message>
+    <message>
+        <source>Downloading update…</source>
+        <translation>Update wird heruntergeladen…</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Abbrechen</translation>
+    </message>
+    <message>
+        <source>Update failed</source>
+        <translation>Update fehlgeschlagen</translation>
+    </message>
+    <message>
+        <source>Could not download the installer:
+%1</source>
+        <translation>Installer konnte nicht heruntergeladen werden:
+%1</translation>
+    </message>
+    <message>
+        <source>Could not start the installer:
+%1</source>
+        <translation>Installer konnte nicht gestartet werden:
+%1</translation>
+    </message>
+    <message>
+        <source>About VRAM Task Manager</source>
+        <translation>Über VRAM Task Manager</translation>
+    </message>
+</context>
+<context>
+    <name>AboutDialog</name>
+    <message>
+        <source>About VRAM Task Manager</source>
+        <translation>Über VRAM Task Manager</translation>
+    </message>
+    <message>
+        <source>Version %1</source>
+        <translation>Version %1</translation>
+    </message>
+    <message>
+        <source>Live per-process VRAM usage for Windows.</source>
+        <translation>Live-VRAM-Nutzung pro Prozess unter Windows.</translation>
+    </message>
+    <message>
+        <source>© 2026 Rene Hadler
+Built with Qt %1</source>
+        <translation>© 2026 Rene Hadler
+Erstellt mit Qt %1</translation>
+    </message>
+    <message>
+        <source>View project on GitHub</source>
+        <translation>Projekt auf GitHub ansehen</translation>
+    </message>
+    <message>
+        <source>Install</source>
+        <translation>Installieren</translation>
+    </message>
+    <message>
+        <source>Check again</source>
+        <translation>Erneut prüfen</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Schließen</translation>
+    </message>
+    <message>
+        <source>Update check pending.</source>
+        <translation>Update-Prüfung steht aus.</translation>
+    </message>
+    <message>
+        <source>Checking for updates…</source>
+        <translation>Suche nach Updates…</translation>
+    </message>
+    <message>
+        <source>You're up to date — version %1 is the latest release.</source>
+        <translation>Du bist aktuell — Version %1 ist die neueste Veröffentlichung.</translation>
+    </message>
+    <message>
+        <source>Update available: &lt;b&gt;%1&lt;/b&gt; (you have %2).</source>
+        <translation>Update verfügbar: &lt;b&gt;%1&lt;/b&gt; (installiert ist %2).</translation>
+    </message>
+    <message>
+        <source>Update check unavailable — check your internet connection.</source>
+        <translation>Update-Prüfung nicht möglich — bitte Internetverbindung prüfen.</translation>
+    </message>
 </context>
 <context>
     <name>VramModel</name>
@@ -119,6 +232,21 @@ Prozess liefert (z. B. nicht-NVIDIA-Prozess).</translation>
     <message>
         <source>Performance counter &quot;GPU Process Memory&quot; not available. Requires Windows 10 1709+ with a WDDM 2.0 driver.</source>
         <translation>Performance-Counter „GPU Process Memory" nicht verfügbar. Benötigt Windows 10 1709+ mit WDDM-2.0-Treiber.</translation>
+    </message>
+</context>
+<context>
+    <name>UpdateChecker</name>
+    <message>
+        <source>No installer asset available for this release.</source>
+        <translation>Kein Installer-Asset für dieses Release vorhanden.</translation>
+    </message>
+    <message>
+        <source>Cannot write to %1: %2</source>
+        <translation>Schreiben nach %1 fehlgeschlagen: %2</translation>
+    </message>
+    <message>
+        <source>Download cancelled.</source>
+        <translation>Download abgebrochen.</translation>
     </message>
 </context>
 <context>

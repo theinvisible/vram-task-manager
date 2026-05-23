@@ -54,7 +54,7 @@ void applyDarkTheme() {
 int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("VRAM Task Manager"));
-    QApplication::setOrganizationName(QStringLiteral("iteas"));
+    QApplication::setOrganizationName(QStringLiteral("RH"));
 
     // Pick the best-matching app translation for the system locale; if none
     // matches we silently fall back to the source language (English).

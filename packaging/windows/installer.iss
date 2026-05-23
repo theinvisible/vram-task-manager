@@ -13,8 +13,8 @@
 #endif
 
 #define AppName        "VRAM Task Manager"
-#define AppPublisher   "iteas"
-#define AppPublisherURL "https://iteas.at"
+#define AppPublisher   "RH"
+#define AppPublisherURL "https://hadler.me"
 #define AppExeName     "vram-task-manager.exe"
 ; Stable AppId — keep this constant across releases so upgrades replace the
 ; previous install instead of producing a second Apps & Features entry.

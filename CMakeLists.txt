@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(vram-task-manager VERSION 0.1.1 LANGUAGES CXX)
+project(vram-task-manager VERSION 0.1.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,7 +13,7 @@ endif()
 
 # Try the standard find_package first — covers CI (install-qt-action sets
 # Qt6_DIR / CMAKE_PREFIX_PATH / QT_ROOT_DIR) and any explicit user-supplied prefix.
-find_package(Qt6 QUIET COMPONENTS Widgets LinguistTools)
+find_package(Qt6 QUIET COMPONENTS Widgets Network LinguistTools)
 
 # Local-dev fallback: scan known Qt roots (Desktop: H:/Qt, Notebook: C:/Qt) for
 # the newest 6.x MSVC/MinGW kit.
@@ -44,7 +44,7 @@ if(NOT Qt6_FOUND)
         list(PREPEND CMAKE_PREFIX_PATH "${_qt_found_dir}")
         set(CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}" CACHE STRING "" FORCE)
         message(STATUS "Auto-detected Qt6 at ${_qt_found_dir}")
-        find_package(Qt6 REQUIRED COMPONENTS Widgets LinguistTools)
+        find_package(Qt6 REQUIRED COMPONENTS Widgets Network LinguistTools)
     else()
         message(FATAL_ERROR "Qt6 nicht gefunden — Qt6_DIR/CMAKE_PREFIX_PATH setzen oder Qt unter H:/Qt bzw. C:/Qt installieren.")
     endif()
@@ -62,15 +62,26 @@ add_executable(vram-task-manager WIN32
     src/NvmlSampler.cpp
     src/GpuInventory.h
     src/GpuInventory.cpp
+    src/UpdateChecker.h
+    src/UpdateChecker.cpp
+    src/AboutDialog.h
+    src/AboutDialog.cpp
     resources/app.rc
     resources/app.qrc
 )
 
 target_link_libraries(vram-task-manager PRIVATE
     Qt6::Widgets
+    Qt6::Network
     pdh
     psapi
     dxgi
+)
+
+# Expose project version to C++ so the update checker can compare against
+# the latest GitHub release.
+target_compile_definitions(vram-task-manager PRIVATE
+    APP_VERSION_STRING="${PROJECT_VERSION}"
 )
 
 # Compile .ts → .qm and embed under the Qt resource prefix /i18n. Source
